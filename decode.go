@@ -894,7 +894,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	}
 	if d.canDecodeByUnmarshaler(dst) {
 		if err := d.decodeByUnmarshaler(ctx, dst, src); err != nil {
-			return err
+			return errors.ErrUnmarshal(err, dst.Type(), src.GetToken())
 		}
 		return nil
 	}
@@ -1689,7 +1689,7 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 		k := d.createDecodableValue(keyType)
 		if d.canDecodeByUnmarshaler(k) {
 			if err := d.decodeByUnmarshaler(ctx, k, key); err != nil {
-				return err
+				return errors.ErrUnmarshal(err, dst.Type(), src.GetToken())
 			}
 		} else {
 			keyVal, err := d.nodeToValue(ctx, key)
