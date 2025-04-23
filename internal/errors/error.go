@@ -128,9 +128,13 @@ func ErrUnexpectedNodeType(actual, expected ast.NodeType, tk *token.Token) *Unex
 	}
 }
 
-func ErrUnmarshal(wrapped error, dstType reflect.Type, tk *token.Token) *UnmarshalerError {
+func ErrUnmarshal(wrapped error, dstType reflect.Type, tk *token.Token) error {
 	if wrapped == nil {
 		return nil
+	}
+	// Prevent double-wrapping of errors from Decoders nestled inside Unmarshalers
+	if _, ok := wrapped.(Error); ok {
+		return wrapped
 	}
 	return &UnmarshalerError{
 		Wrapped: wrapped,
