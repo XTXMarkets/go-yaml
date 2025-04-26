@@ -133,8 +133,9 @@ func ErrUnmarshal(wrapped error, dstType reflect.Type, tk *token.Token) error {
 		return nil
 	}
 	// Prevent double-wrapping of errors from Decoders nestled inside Unmarshalers
-	if _, ok := wrapped.(Error); ok {
-		return wrapped
+	var err *UnmarshalerError
+	if errors.As(wrapped, &err) {
+		return err
 	}
 	return &UnmarshalerError{
 		Wrapped: wrapped,
