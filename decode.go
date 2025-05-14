@@ -295,7 +295,7 @@ func (d *Decoder) addSequenceNodeCommentToMap(node *ast.SequenceNode) {
 func (d *Decoder) addFootCommentToMap(node ast.Node) {
 	var (
 		footComment     *ast.CommentGroupNode
-		footCommentPath string = node.GetPath()
+		footCommentPath = node.GetPath()
 	)
 	switch n := node.(type) {
 	case *ast.SequenceNode:
@@ -882,6 +882,9 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	if d.isExceededMaxDepth() {
 		return ErrExceededMaxDepth
 	}
+	if !dst.IsValid() {
+		return nil
+	}
 
 	if src.Type() == ast.AnchorType {
 		anchor, _ := src.(*ast.AnchorNode)
@@ -930,6 +933,8 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 		v := reflect.ValueOf(srcVal)
 		if v.IsValid() {
 			dst.Set(v)
+		} else {
+			dst.Set(reflect.Zero(valueType))
 		}
 	case reflect.Map:
 		return d.decodeMap(ctx, dst, src)
@@ -1453,7 +1458,10 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 					node, exists := keyToNodeMap[structField.RenderName]
 					if exists {
 						// TODO: to make FieldError message cutomizable
-						return errors.ErrSyntax(fmt.Sprintf("%s", err), node.GetToken())
+						return errors.ErrSyntax(
+							fmt.Sprintf("%s", err),
+							d.getParentMapTokenIfExistsForValidationError(node.Type(), node.GetToken()),
+						)
 					} else if t := src.GetToken(); t != nil && t.Prev != nil && t.Prev.Prev != nil {
 						// A missing required field will not be in the keyToNodeMap
 						// the error needs to be associated with the parent of the source node
@@ -1465,6 +1473,37 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		}
 	}
 	return nil
+}
+
+// getParentMapTokenIfExists if the NodeType is a container type such as MappingType or SequenceType,
+// it is necessary to return the parent MapNode's colon token to represent the entire container.
+func (d *Decoder) getParentMapTokenIfExistsForValidationError(typ ast.NodeType, tk *token.Token) *token.Token {
+	if tk == nil {
+		return nil
+	}
+	if typ == ast.MappingType {
+		// map:
+		//   key: value
+		//      ^ current token ( colon )
+		if tk.Prev == nil {
+			return tk
+		}
+		key := tk.Prev
+		if key.Prev == nil {
+			return tk
+		}
+		return key.Prev
+	}
+	if typ == ast.SequenceType {
+		// map:
+		//   - value
+		//   ^ current token ( sequence entry )
+		if tk.Prev == nil {
+			return tk
+		}
+		return tk.Prev
+	}
+	return tk
 }
 
 func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.Node) error {
@@ -1858,7 +1897,7 @@ func (d *Decoder) parse(ctx context.Context, bytes []byte) (*ast.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		if v != nil {
+		if v != nil || (doc.Body != nil && doc.Body.Type() == ast.NullType) {
 			normalizedFile.Docs = append(normalizedFile.Docs, doc)
 			cm := CommentMap{}
 			maps.Copy(cm, d.toCommentMap)
@@ -1896,6 +1935,13 @@ func (d *Decoder) decodeInit(ctx context.Context) error {
 func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 	d.decodeDepth = 0
 	d.anchorValueMap = make(map[string]reflect.Value)
+	if len(d.parsedFile.Docs) == 0 {
+		// empty document.
+		dst := v.Elem()
+		if dst.IsValid() {
+			dst.Set(reflect.Zero(dst.Type()))
+		}
+	}
 	if len(d.parsedFile.Docs) <= d.streamIndex {
 		return io.EOF
 	}
@@ -1926,14 +1972,11 @@ func (d *Decoder) Decode(v interface{}) error {
 // and stores it in the value pointed to by v with context.Context.
 func (d *Decoder) DecodeContext(ctx context.Context, v interface{}) error {
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() != reflect.Ptr {
+	if !rv.IsValid() || rv.Type().Kind() != reflect.Ptr {
 		return ErrDecodeRequiredPointerType
 	}
 	if d.isInitialized() {
 		if err := d.decode(ctx, rv); err != nil {
-			if err == io.EOF {
-				return err
-			}
 			return err
 		}
 		return nil
@@ -1942,9 +1985,6 @@ func (d *Decoder) DecodeContext(ctx context.Context, v interface{}) error {
 		return err
 	}
 	if err := d.decode(ctx, rv); err != nil {
-		if err == io.EOF {
-			return err
-		}
 		return err
 	}
 	return nil

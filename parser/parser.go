@@ -304,7 +304,7 @@ func (p *parser) parseScalarValue(ctx *context, tk *Token) (ast.ScalarNode, erro
 	switch tk.Type() {
 	case token.MergeKeyType:
 		return newMergeKeyNode(ctx, tk)
-	case token.NullType:
+	case token.NullType, token.ImplicitNullType:
 		return newNullNode(ctx, tk)
 	case token.BoolType:
 		return newBoolNode(ctx, tk)
@@ -400,7 +400,11 @@ func (p *parser) parseFlowMap(ctx *context) (*ast.MappingNode, error) {
 			}
 		default:
 			if !p.isFlowMapDelim(ctx.nextToken()) {
-				return nil, errors.ErrSyntax("could not find flow map content", mapKeyTk.RawToken())
+				errTk := mapKeyTk
+				if errTk == nil {
+					errTk = tk
+				}
+				return nil, errors.ErrSyntax("could not find flow map content", errTk.RawToken())
 			}
 			key, err := p.parseScalarValue(ctx, mapKeyTk)
 			if err != nil {
@@ -701,7 +705,7 @@ func (p *parser) mapKeyText(n ast.Node) string {
 	case *ast.AnchorNode:
 		return p.mapKeyText(nn.Value)
 	case *ast.AliasNode:
-		return p.mapKeyText(nn.Value)
+		return ""
 	}
 	return n.GetToken().Value
 }
@@ -743,7 +747,7 @@ func (p *parser) parseMapValue(ctx *context, key ast.MapKeyNode, colonTk *Token)
 		// next
 		group := &TokenGroup{
 			Type:   TokenGroupAnchor,
-			Tokens: []*Token{tk, ctx.createNullToken(tk)},
+			Tokens: []*Token{tk, ctx.createImplicitNullToken(tk)},
 		}
 		anchor, err := p.parseAnchor(ctx.withGroup(group), group)
 		if err != nil {
@@ -780,7 +784,7 @@ func (p *parser) parseMapValue(ctx *context, key ast.MapKeyNode, colonTk *Token)
 		// next
 		group := &TokenGroup{
 			Type:   TokenGroupAnchor,
-			Tokens: []*Token{tk, ctx.createNullToken(tk)},
+			Tokens: []*Token{tk, ctx.createImplicitNullToken(tk)},
 		}
 		anchor, err := p.parseAnchor(ctx.withGroup(group), group)
 		if err != nil {
@@ -972,7 +976,7 @@ func (p *parser) parseTag(ctx *context) (*ast.TagNode, error) {
 
 func (p *parser) parseTagValue(ctx *context, tagRawTk *token.Token, tk *Token) (ast.Node, error) {
 	if tk == nil {
-		return newNullNode(ctx, ctx.createNullToken(&Token{Token: tagRawTk}))
+		return newNullNode(ctx, ctx.createImplicitNullToken(&Token{Token: tagRawTk}))
 	}
 	switch token.ReservedTagKeyword(tagRawTk.Value) {
 	case token.MappingTag, token.SetTag:
@@ -1137,7 +1141,7 @@ func (p *parser) parseSequenceValue(ctx *context, seqTk *Token) (ast.Node, error
 		// -
 		group := &TokenGroup{
 			Type:   TokenGroupAnchor,
-			Tokens: []*Token{tk, ctx.createNullToken(tk)},
+			Tokens: []*Token{tk, ctx.createImplicitNullToken(tk)},
 		}
 		anchor, err := p.parseAnchor(ctx.withGroup(group), group)
 		if err != nil {
@@ -1174,7 +1178,7 @@ func (p *parser) parseSequenceValue(ctx *context, seqTk *Token) (ast.Node, error
 		// next
 		group := &TokenGroup{
 			Type:   TokenGroupAnchor,
-			Tokens: []*Token{tk, ctx.createNullToken(tk)},
+			Tokens: []*Token{tk, ctx.createImplicitNullToken(tk)},
 		}
 		anchor, err := p.parseAnchor(ctx.withGroup(group), group)
 		if err != nil {

@@ -160,6 +160,7 @@ v:
   b	: 'y'
   c		: 'z'
 `,
+		`{a: &a c, *a : b}`,
 	}
 	for idx, src := range sources {
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
@@ -310,7 +311,7 @@ a: 0 - 1
 - a:
    b: c
    d: e
-- f: null
+- f:
   g: h
 `,
 		},
@@ -350,7 +351,7 @@ a:
 -     a     :
       b: c
 `, `
-- a: null
+- a:
   b: c
 `,
 		},
@@ -739,8 +740,8 @@ d: e
 `,
 			`
 a:
- b: &anchor null
- c: &anchor2 null
+ b: &anchor
+ c: &anchor2
 d: e
 `,
 		},
@@ -1426,6 +1427,14 @@ foo:
            ^
 `,
 		},
+		{
+			`{"000":0000A,`,
+			`
+[1:13] could not find flow map content
+>  1 | {"000":0000A,
+                   ^
+`,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.source, func(t *testing.T) {
@@ -1558,7 +1567,7 @@ foo:
 `
 		expected := `
 foo:
-  bar: null # comment
+  bar: # comment
   baz: 1`
 		f, err := parser.ParseBytes([]byte(content), parser.ParseComments)
 		if err != nil {
@@ -1581,7 +1590,7 @@ foo:
 `
 		expected := `
 foo:
-  bar: null
+  bar:
   # comment
   baz: 1`
 		f, err := parser.ParseBytes([]byte(content), parser.ParseComments)
@@ -1611,7 +1620,7 @@ baz: 1`
 		}
 		expected := `
 foo:
-  bar: null
+  bar:
 # comment
 baz: 1`
 		got := f.Docs[0].String()
